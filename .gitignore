@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.venv/
+
+# Environment Variables (CRITICAL)
+.env
+
+# Project Output & Temp Files
+output/
+temp_processing/
+uploaded_pdfs/
+*.mp4
+*.mp3
+*.png
+images_list.txt
+audios_list.txt
+
+# OS Specific
+.DS_Store
+Thumbs.db

@@ -1,0 +1,5 @@
+google-generativeai
+deepgram-sdk
+pymupdf
+pydub
+python-dotenv

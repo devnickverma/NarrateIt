@@ -1,0 +1,282 @@
+import os
+import time
+import logging
+import glob
+import shutil
+import json
+import concurrent.futures
+import fitz  # PyMuPDF
+import google.generativeai as genai
+from dotenv import load_dotenv
+from PIL import Image
+from deepgram import DeepgramClient
+from pydub import AudioSegment
+import subprocess
+
+# Load environment variables from the parent directory
+load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
+
+# Configure Logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def configure_genai():
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise ValueError("GOOGLE_API_KEY not found in environment variables.")
+    genai.configure(api_key=api_key)
+
+def extract_images(pdf_path, output_dir):
+    """Converts PDF pages to high-resolution PNGs."""
+    if os.path.exists(output_dir):
+        shutil.rmtree(output_dir)
+    os.makedirs(output_dir)
+
+    try:
+        doc = fitz.open(pdf_path)
+        logging.info(f"Opened '{pdf_path}', found {len(doc)} pages.")
+
+        image_paths = []
+        for i, page in enumerate(doc):
+            zoom = 300 / 72
+            mat = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(matrix=mat)
+            
+            filename = f"page_{i+1:03d}.png"
+            filepath = os.path.join(output_dir, filename)
+            pix.save(filepath)
+            image_paths.append(filepath)
+            logging.info(f"Saved {filepath}")
+        
+        return sorted(image_paths)
+    except Exception as e:
+        logging.error(f"Error extracting images: {e}")
+        return []
+
+def generate_script_for_page(image_path, custom_prompt, page_num):
+    """Generates a structured JSON script using Gemini for a single page."""
+    configure_genai()
+    # Use JSON mode for structured output
+    model = genai.GenerativeModel('gemini-2.0-flash', generation_config={"response_mime_type": "application/json"})
+    
+    # Enhanced prompt for logical flow and JSON structure
+    full_prompt = f"""
+    {custom_prompt}
+
+    CRITICAL INSTRUCTION:
+    1. **Analyze Panel Flow:** You **must** analyze the panel layout and dialogue placement to determine the **logically intended reading order** for maximum dramatic impact. The flow must be natural and cinematic.
+    2. **Structured Output:** Output a **JSON Object** with a single key "script_segments" containing an array of objects.
+    
+    JSON Schema Requirement:
+    {{
+      "script_segments": [
+        {{
+          "type": "narration",
+          "text": "Describe the scene before any talking. Focus on setting and mood."
+        }},
+        {{
+          "type": "dialogue",
+          "speaker": "Character Name",
+          "text": "The character's exact dialogue."
+        }},
+        {{
+          "type": "narration",
+          "text": "Describe the character's reaction, change in expression, or the action in the next panel."
+        }}
+      ]
+    }}
+
+    **"Best Narrator" Checklist (REQUIRED for every page):**
+    1. **Opening Hook:** Start every page with a **Narration segment** that sets the scene (e.g., "We zoom in on the castle grounds...").
+    2. **Facial Analysis:** Before reading a character's dialogue, insert a **Narration segment** describing their **emotion and visual state** (e.g., "Character X, with an utterly terrified look on their face...").
+    3. **Action Segregation:** Insert a **Narration segment** *between* dialogue blocks if the panel flow shows a pause, a sudden movement, or a scene transition.
+    4. **Closing Scene:** End the script for the page with a final **Narration segment** describing the final panel's cliffhanger, facial expression, or transition.
+    """
+    
+    try:
+        img = Image.open(image_path)
+        logging.info(f"Sending Page {page_num} to Gemini...")
+        response = model.generate_content([full_prompt, img])
+        
+        # Parse JSON
+        script_data = json.loads(response.text)
+        logging.info(f"Script generated for Page {page_num}")
+        return script_data
+    except Exception as e:
+        logging.error(f"Error generating script for Page {page_num}: {e}")
+        return None
+
+def generate_audio_for_segment(text, output_filename, voice_model):
+    """Generates audio for a single segment using Deepgram."""
+    api_key = os.getenv("DEEPGRAM_API_KEY")
+    if not api_key:
+        raise ValueError("DEEPGRAM_API_KEY not found.")
+
+    try:
+        deepgram = DeepgramClient(api_key=api_key)
+        os.makedirs(os.path.dirname(output_filename), exist_ok=True)
+        
+        response = deepgram.speak.v1.audio.generate(
+            text=text,
+            model=voice_model
+        )
+        
+        with open(output_filename, "wb") as f:
+            for chunk in response:
+                if chunk:
+                    f.write(chunk)
+        
+        audio = AudioSegment.from_file(output_filename)
+        return len(audio) / 1000.0
+    except Exception as e:
+        logging.error(f"Error generating audio: {e}")
+        return None
+
+def process_page_audio(page_data, page_num, audio_dir, voice_model):
+    """Processes all audio segments for a single page."""
+    if not page_data or "script_segments" not in page_data:
+        logging.warning(f"Page {page_num}: Missing 'script_segments' key in JSON.")
+        return None
+
+    segments = page_data["script_segments"]
+    full_text = ""
+    
+    for seg in segments:
+        text = seg.get("text", "")
+        # We can add a tiny pause or context if needed, but for now just concatenate.
+        # If it's narration, maybe we could prepend something, but the prompt asks for "text to be spoken".
+        # So we assume 'text' is ready to read.
+        full_text += f"{text} "
+    
+    audio_filename = os.path.join(audio_dir, f"page_{page_num:03d}.mp3")
+    duration = generate_audio_for_segment(full_text, audio_filename, voice_model)
+    
+    if duration:
+        logging.info(f"Audio synthesized for Page {page_num}")
+        return {
+            "image": None, # Will be filled later
+            "audio": audio_filename,
+            "duration": duration
+        }
+    return None
+
+def create_video(segments, output_filename):
+    """Stitches images and audio into a video using FFmpeg."""
+    os.makedirs(os.path.dirname(output_filename), exist_ok=True)
+    
+    # Use absolute paths for list files to avoid CWD issues
+    base_dir = os.path.dirname(output_filename)
+    images_txt = os.path.join(base_dir, "images_list.txt")
+    audios_txt = os.path.join(base_dir, "audios_list.txt")
+    
+    with open(images_txt, "w") as f_img, open(audios_txt, "w") as f_aud:
+        for segment in segments:
+            img_path = segment['image'].replace("\\", "/")
+            aud_path = segment['audio'].replace("\\", "/")
+            f_img.write(f"file '{img_path}'\n")
+            f_img.write(f"duration {segment['duration']}\n")
+            f_aud.write(f"file '{aud_path}'\n")
+        
+        if segments:
+            last_img = segments[-1]['image'].replace("\\", "/")
+            f_img.write(f"file '{last_img}'\n")
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "concat", "-safe", "0", "-i", images_txt,
+        "-f", "concat", "-safe", "0", "-i", audios_txt,
+        "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+        "-c:v", "libx264", "-c:a", "aac",
+        "-pix_fmt", "yuv420p", "-shortest",
+        output_filename
+    ]
+    
+    try:
+        logging.info(f"Running FFmpeg...")
+        subprocess.run(cmd, check=True, capture_output=True)
+        logging.info(f"Video created: {output_filename}")
+        
+        if os.path.exists(images_txt): os.remove(images_txt)
+        if os.path.exists(audios_txt): os.remove(audios_txt)
+        return True
+    except subprocess.CalledProcessError as e:
+        logging.error(f"FFmpeg failed: {e}")
+        return False
+
+def run_narration_pipeline(pdf_path: str, voice_model: str, custom_prompt: str, output_dir: str) -> str:
+    """
+    Executes the full video generation pipeline with parallel processing.
+    """
+    logging.info(f"--- Starting Pipeline for {pdf_path} ---")
+    
+    # Setup directories
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    temp_dir = os.path.join(base_dir, "../temp_processing")
+    images_dir = os.path.join(temp_dir, "images")
+    audio_dir = os.path.join(temp_dir, "audio")
+    
+    # Step 1: Extract Images
+    logging.info("STEP 1/4: Converting PDF pages to images...")
+    images = extract_images(pdf_path, images_dir)
+    if not images:
+        raise Exception("Failed to extract images from PDF.")
+    
+    # Step 2: Parallel Script Generation
+    logging.info("STEP 2/4: Submitting ALL pages (batch) to Gemini for scripting...")
+    page_scripts = [None] * len(images)
+    
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        # Submit all tasks
+        future_to_page = {
+            executor.submit(generate_script_for_page, img_path, custom_prompt, i+1): i 
+            for i, img_path in enumerate(images)
+        }
+        
+        for future in concurrent.futures.as_completed(future_to_page):
+            page_idx = future_to_page[future]
+            try:
+                data = future.result()
+                page_scripts[page_idx] = data
+            except Exception as e:
+                logging.error(f"Script generation failed for page {page_idx+1}: {e}")
+
+    # Step 3: Parallel Audio Generation
+    logging.info("STEP 3/4: Concurrently generating ALL audio files via Deepgram...")
+    final_segments = [None] * len(images)
+    
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future_to_page = {}
+        for i, script_data in enumerate(page_scripts):
+            if script_data:
+                future = executor.submit(process_page_audio, script_data, i+1, audio_dir, voice_model)
+                future_to_page[future] = i
+            else:
+                logging.warning(f"No script for page {i+1}, skipping audio.")
+        
+        for future in concurrent.futures.as_completed(future_to_page):
+            page_idx = future_to_page[future]
+            try:
+                result = future.result()
+                if result:
+                    result["image"] = images[page_idx]
+                    final_segments[page_idx] = result
+            except Exception as e:
+                logging.error(f"Audio generation failed for page {page_idx+1}: {e}")
+    
+    # Filter out None segments
+    valid_segments = [s for s in final_segments if s is not None]
+    
+    if not valid_segments:
+        raise Exception("No segments were successfully generated.")
+
+    # Step 4: Video Assembly
+    logging.info("STEP 4/4: Stitching all synchronized video chunks...")
+    output_filename = f"{os.path.splitext(os.path.basename(pdf_path))[0]}_narrated.mp4"
+    final_video_path = os.path.join(output_dir, output_filename)
+    
+    success = create_video(valid_segments, final_video_path)
+    
+    if not success:
+        raise Exception("Video assembly failed.")
+        
+    logging.info(f"Pipeline Complete. Video saved to {final_video_path}")
+    return output_filename

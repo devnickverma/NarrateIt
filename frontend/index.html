@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MangaNarrator // MVP: Protocol 1.0</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --color-white: #ffffff;
+            --color-black: #000000;
+            --color-accent: #00FFFF; /* Neon Cyan */
+            --color-secondary: #FF007F; /* Bright Pink */
+            --color-button: #FFFF00; /* Bright Yellow */
+            --border-width: 4px;
+            --shadow-offset: 6px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background-color: var(--color-white);
+            color: var(--color-black);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Utilities */
+        .nb-box {
+            border: var(--border-width) solid var(--color-black);
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0px var(--color-black);
+            background-color: var(--color-white);
+            transition: all 0.2s ease;
+        }
+
+        .nb-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .nb-button {
+            display: inline-block;
+            background-color: var(--color-white);
+            color: var(--color-black);
+            font-family: 'Fira Code', monospace;
+            font-weight: 700;
+            font-size: 1rem;
+            padding: 0.8rem 1.5rem;
+            border: var(--border-width) solid var(--color-black);
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0px var(--color-black);
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: all 0.1s;
+        }
+
+        .nb-button:active {
+            transform: translate(2px, 2px);
+            box-shadow: calc(var(--shadow-offset) - 2px) calc(var(--shadow-offset) - 2px) 0px var(--color-black);
+        }
+
+        .nb-button.primary {
+            background-color: var(--color-button);
+            font-size: 1.2rem;
+            width: 100%;
+            margin-top: 1rem;
+        }
+
+        /* Typography */
+        h1, h2, h3 {
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: -1px;
+        }
+
+        label {
+            font-family: 'Fira Code', monospace;
+            font-weight: 700;
+            display: block;
+            margin-bottom: 0.5rem;
+            margin-top: 1.5rem;
+        }
+
+        /* Header */
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .hero-title {
+            font-size: 3.5rem;
+            line-height: 1;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Glitch Animation */
+        @keyframes glitch {
+            0% { text-shadow: 3px 3px var(--color-accent); }
+            25% { text-shadow: -3px -3px var(--color-secondary); }
+            50% { text-shadow: 3px -3px var(--color-accent); }
+            75% { text-shadow: -3px 3px var(--color-secondary); }
+            100% { text-shadow: 3px 3px var(--color-accent); }
+        }
+
+        .glitch-text {
+            animation: glitch 0.8s infinite;
+        }
+
+        .tagline {
+            background-color: var(--color-secondary);
+            color: var(--color-white);
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            font-size: 1.2rem;
+            font-weight: 700;
+            transform: rotate(-1deg);
+            border: var(--border-width) solid var(--color-black);
+            box-shadow: 4px 4px 0px var(--color-black);
+        }
+
+        /* Form Elements */
+        input[type="file"], select, textarea {
+            width: 100%;
+            padding: 1rem;
+            font-family: 'Fira Code', monospace;
+            font-size: 1rem;
+            border: var(--border-width) solid var(--color-black);
+            background-color: #f0f0f0;
+            outline: none;
+        }
+
+        input[type="file"]:focus, select:focus, textarea:focus {
+            background-color: var(--color-accent);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 150px;
+        }
+
+        .prompt-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .prompt-btn {
+            flex: 1;
+            font-size: 0.9rem;
+        }
+
+        /* Status Log */
+        #status-log {
+            background-color: var(--color-black);
+            color: var(--color-accent);
+            font-family: 'Fira Code', monospace;
+            padding: 1.5rem;
+            margin-top: 2rem;
+            border: var(--border-width) solid var(--color-black);
+            min-height: 100px;
+            white-space: pre-wrap;
+        }
+
+        .status-success {
+            color: var(--color-secondary) !important;
+            font-weight: bold;
+        }
+
+        /* Feature Grid */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin: 3rem 0;
+        }
+
+        .feature-card {
+            padding: 1.5rem;
+            text-align: center;
+        }
+
+        .feature-card h3 {
+            font-size: 1.2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Quote */
+        .quote-container {
+            margin: 3rem auto;
+            max-width: 800px;
+            text-align: center;
+            transform: rotate(1deg);
+        }
+
+        .quote-box {
+            background-color: var(--color-secondary);
+            color: var(--color-white);
+            padding: 1.5rem;
+            font-size: 1.1rem;
+            font-style: italic;
+            border: var(--border-width) solid var(--color-black);
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0px var(--color-black);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero-title { font-size: 2.5rem; }
+            .prompt-buttons { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="nb-container">
+        <header>
+            <h1 class="hero-title glitch-text">MANGANARRATOR</h1>
+            <p class="tagline">MVP: PROTOCOL 1.0</p>
+        </header>
+
+        <form id="narrator-form">
+            <div class="nb-box" style="padding: 2rem; margin-bottom: 2rem;">
+                <label for="source-file">1. Source File (PDF Only)</label>
+                <input type="file" id="source-file" accept=".pdf" required>
+
+                <label for="voice-select">2. Narrator Config (Voice Model)</label>
+                <select id="voice-select">
+                    <option value="aura-asteria-en" selected>Deepgram: Aura Asteria (Female)</option>
+                    <option value="aura-orion-en">Deepgram: Aura Orion (Male)</option>
+                    <option value="fallback-edge">Fallback: Edge TTS</option>
+                </select>
+
+                <label for="personality-prompt">3. Personality System Prompt</label>
+                <div class="prompt-buttons">
+                    <button type="button" class="nb-button prompt-btn" id="btn-witty">Witty/Sarcastic</button>
+                    <button type="button" class="nb-button prompt-btn" id="btn-serious">Serious/Epic</button>
+                    <button type="button" class="nb-button prompt-btn" id="btn-chill">Educational/Chill</button>
+                </div>
+                <textarea id="personality-prompt" name="personality-prompt">You are a professional, charismatic Manga Recap Host and Storyteller known for your wit, perfect comic timing, and ability to capture the epic scale of a scene. Your primary goal is to describe the visual drama of the page, not just the text.
+
+Maintain an energetic, slightly sarcastic tone. Deliver one short, spontaneous reaction (a joke, an impressed sigh, or a cutting remark) per page based on the most absurd or dramatic visual element.</textarea>
+
+                <button type="submit" class="nb-button primary">GENERATE VIDEO & DEPLOY PROTOCOL</button>
+            </div>
+        </form>
+
+        <div id="status-log" class="nb-box">Awaiting Protocol Deployment...</div>
+
+        <!-- Video Player Container (Hidden by default) -->
+        <div id="video-container" class="nb-box" style="display: none; margin-top: 2rem; padding: 1rem; text-align: center;">
+            <h3 style="margin-bottom: 1rem; color: var(--color-secondary);">GENERATED OUTPUT</h3>
+            <video id="final-video-player" controls style="width: 100%; border: 2px solid var(--color-black); box-shadow: 4px 4px 0px var(--color-black);">
+                Your browser does not support the video tag.
+            </video>
+        </div>
+
+        <div class="features-grid">
+            <div class="nb-box feature-card">
+                <h3>Gemini 1.5</h3>
+                <p>Vision & Script</p>
+            </div>
+            <div class="nb-box feature-card">
+                <h3>Deepgram</h3>
+                <p>Voice Synthesis</p>
+            </div>
+            <div class="nb-box feature-card">
+                <h3>FFmpeg</h3>
+                <p>Video Stitching</p>
+            </div>
+            <div class="nb-box feature-card">
+                <h3>PyMuPDF</h3>
+                <p>Image Extraction</p>
+            </div>
+        </div>
+
+        <div class="quote-container">
+            <div class="quote-box">
+                "The difference between a robot and a human? The human can crack a joke. Narrator Protocol Engaged."
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 1. Prompt Management
+        const prompts = {
+            witty: "Act as an energetic, witty manga narrator making a video for fans. Read the panels in the correct Japanese order (Right-to-Left). Describe the visual action briefly and add one short, sarcastic joke or witty comment about the characters' expressions or the situation. Output ONLY the text to be spoken.",
+            serious: "Act as a solemn, epic movie trailer narrator. Describe the action using dramatic, powerful, and mysterious language. Read the dialogue straight, but inject intense pauses and emphasis. Do not use humor. Output ONLY the text to be spoken.",
+            chill: "Act as a relaxed, knowledgeable comic book historian. Read the dialogue and provide brief, informative context about the characters or world-building elements. Keep the tone calm, friendly, and analytical. Output ONLY the text to be spoken."
+        };
+
+        const promptTextarea = document.getElementById('personality-prompt');
+
+        document.getElementById('btn-witty').addEventListener('click', () => {
+            promptTextarea.value = prompts.witty;
+        });
+
+        document.getElementById('btn-serious').addEventListener('click', () => {
+            promptTextarea.value = prompts.serious;
+        });
+
+        document.getElementById('btn-chill').addEventListener('click', () => {
+            promptTextarea.value = prompts.chill;
+        });
+
+        // 2. Form Submission & Status Simulation
+        const form = document.getElementById('narrator-form');
+        const statusLog = document.getElementById('status-log');
+        const submitBtn = form.querySelector('button[type="submit"]');
+        const videoContainer = document.getElementById('video-container');
+        const videoPlayer = document.getElementById('final-video-player');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // Disable button to prevent double submit
+            submitBtn.disabled = true;
+            submitBtn.textContent = "PROCESSING...";
+            
+            // Clear previous status and hide video
+            statusLog.innerHTML = "INITIALIZING PROTOCOL... Checking file and settings...";
+            statusLog.classList.remove('status-success');
+            videoContainer.style.display = 'none';
+            videoPlayer.src = "";
+
+            const formData = new FormData();
+            formData.append('manga-file', document.getElementById('source-file').files[0]);
+            formData.append('voice-select', document.getElementById('voice-select').value);
+            formData.append('personality-prompt', document.getElementById('personality-prompt').value);
+
+            try {
+                // Step 1
+                statusLog.innerHTML += "\n> STEP 1/4: Converting PDF pages to images...";
+                
+                // Step 2
+                setTimeout(() => {
+                    statusLog.innerHTML += "\n> STEP 2/4: Submitting ALL pages (batch) to Gemini for scripting...";
+                }, 2000);
+
+                // Step 3
+                setTimeout(() => {
+                    statusLog.innerHTML += "\n> STEP 3/4: Concurrently generating ALL audio files via Deepgram...";
+                }, 5000);
+
+                 // Step 4
+                setTimeout(() => {
+                    statusLog.innerHTML += "\n> STEP 4/4: Stitching all synchronized video chunks...";
+                }, 8000);
+
+                const response = await fetch('/api/generate-video', {
+                    method: 'POST',
+                    body: formData,
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Final Success
+                    statusLog.innerHTML += `\n\n[PROTOCOL COMPLETE] Video successfully generated.`;
+                    statusLog.innerHTML += `\n> DOWNLOAD LINK ESTABLISHED: <a href="${data.download_url}" style="color: var(--color-button); text-decoration: underline;" target="_blank">CLICK TO DOWNLOAD VIDEO</a>`;
+                    statusLog.classList.add('status-success');
+                    
+                    // Show Video Player
+                    videoPlayer.src = data.download_url;
+                    videoContainer.style.display = 'block';
+                } else {
+                    statusLog.innerHTML += `\n\n[ERROR] Protocol Failed: ${data.error}`;
+                }
+
+            } catch (error) {
+                statusLog.innerHTML += `\n\n[CRITICAL ERROR] Connection Lost: ${error.message}`;
+            } finally {
+                // Re-enable button
+                submitBtn.disabled = false;
+                submitBtn.textContent = "GENERATE VIDEO & DEPLOY PROTOCOL";
+            }
+        });
+    </script>
+</body>
+</html>
