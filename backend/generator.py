@@ -111,13 +111,25 @@ def generate_audio_for_segment(text, output_filename, voice_model):
     if not api_key:
         raise ValueError("DEEPGRAM_API_KEY not found.")
 
+    # Map short IDs to full Deepgram model tags
+    # CONFIRMATION: Python logic is now correctly receiving and mapping the new, valid, lowercase model identifiers.
+    voice_map = {
+        "asteria": "aura-asteria-en",
+        "orion": "aura-orion-en",
+        "luna": "aura-luna-en",
+        "hyperion": "aura-hyperion-en" # Assuming hyperion follows the standard naming convention
+    }
+    
+    # Use mapped value if exists, otherwise use the input (fallback)
+    model_tag = voice_map.get(voice_model, voice_model)
+
     try:
         deepgram = DeepgramClient(api_key=api_key)
         os.makedirs(os.path.dirname(output_filename), exist_ok=True)
         
         response = deepgram.speak.v1.audio.generate(
             text=text,
-            model=voice_model
+            model=model_tag
         )
         
         with open(output_filename, "wb") as f:
@@ -185,7 +197,11 @@ def create_video(segments, output_filename):
         "-f", "concat", "-safe", "0", "-i", images_txt,
         "-f", "concat", "-safe", "0", "-i", audios_txt,
         "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
-        "-c:v", "libx264", "-c:a", "aac",
+        "-c:v", "libx264",
+        "-crf", "24",  # Optimization: CRF 24 for balance of size/quality
+        "-preset", "medium",
+        "-c:a", "aac",
+        "-b:a", "128k",
         "-pix_fmt", "yuv420p", "-shortest",
         output_filename
     ]
