@@ -3,19 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MangaNarrator // MVP: Protocol 1.0</title>
+    <title>NarrateIt // Your Story, Your Voice</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
         :root {
-            --color-white: #ffffff;
-            --color-black: #000000;
-            --color-accent: #00FFFF; /* Neon Cyan */
-            --color-secondary: #FF007F; /* Bright Pink */
-            --color-button: #FFFF00; /* Bright Yellow */
+            --color-bg: #ffffff;
+            --color-text: #000000;
+            --color-primary: #FF00FF; /* Vibrant Magenta */
+            --color-secondary: #39FF14; /* Electric Green */
+            --color-accent: #00FFFF; /* Cyan */
             --border-width: 4px;
-            --shadow-offset: 6px;
+            --shadow-offset: 8px;
+            --card-bg: #f8f8f8;
         }
 
         * {
@@ -26,51 +27,63 @@
 
         body {
             font-family: 'Montserrat', sans-serif;
-            background-color: var(--color-white);
-            color: var(--color-black);
+            background-color: var(--color-bg);
+            color: var(--color-text);
             line-height: 1.6;
             overflow-x: hidden;
         }
 
         /* Utilities */
         .nb-box {
-            border: var(--border-width) solid var(--color-black);
-            box-shadow: var(--shadow-offset) var(--shadow-offset) 0px var(--color-black);
-            background-color: var(--color-white);
+            border: var(--border-width) solid var(--color-text);
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0px var(--color-text);
+            background-color: var(--card-bg);
             transition: all 0.2s ease;
         }
 
         .nb-container {
-            max-width: 1000px;
+            max-width: 1200px;
             margin: 0 auto;
             padding: 2rem;
         }
 
         .nb-button {
             display: inline-block;
-            background-color: var(--color-white);
-            color: var(--color-black);
+            background-color: var(--color-bg);
+            color: var(--color-text);
             font-family: 'Fira Code', monospace;
             font-weight: 700;
             font-size: 1rem;
-            padding: 0.8rem 1.5rem;
-            border: var(--border-width) solid var(--color-black);
-            box-shadow: var(--shadow-offset) var(--shadow-offset) 0px var(--color-black);
+            padding: 1rem 2rem;
+            border: var(--border-width) solid var(--color-text);
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0px var(--color-text);
             cursor: pointer;
             text-transform: uppercase;
             transition: all 0.1s;
         }
 
+        .nb-button:hover {
+            transform: translate(-2px, -2px);
+            box-shadow: calc(var(--shadow-offset) + 2px) calc(var(--shadow-offset) + 2px) 0px var(--color-text);
+            background-color: var(--color-accent);
+        }
+
         .nb-button:active {
             transform: translate(2px, 2px);
-            box-shadow: calc(var(--shadow-offset) - 2px) calc(var(--shadow-offset) - 2px) 0px var(--color-black);
+            box-shadow: calc(var(--shadow-offset) - 2px) calc(var(--shadow-offset) - 2px) 0px var(--color-text);
         }
 
         .nb-button.primary {
-            background-color: var(--color-button);
+            background-color: var(--color-primary);
+            color: var(--color-bg);
             font-size: 1.2rem;
             width: 100%;
-            margin-top: 1rem;
+            margin-top: 1.5rem;
+        }
+        
+        .nb-button.primary:hover {
+            background-color: var(--color-secondary);
+            color: var(--color-text);
         }
 
         /* Typography */
@@ -88,41 +101,97 @@
             margin-top: 1.5rem;
         }
 
-        /* Header */
+        /* Hero Section */
         header {
             text-align: center;
-            margin-bottom: 3rem;
+            margin-bottom: 4rem;
+            padding: 4rem 0;
+            background-image: radial-gradient(var(--color-text) 1px, transparent 1px);
+            background-size: 20px 20px;
+            border-bottom: var(--border-width) solid var(--color-text);
         }
 
         .hero-title {
-            font-size: 3.5rem;
-            line-height: 1;
-            margin-bottom: 0.5rem;
-        }
-
-        /* Glitch Animation */
-        @keyframes glitch {
-            0% { text-shadow: 3px 3px var(--color-accent); }
-            25% { text-shadow: -3px -3px var(--color-secondary); }
-            50% { text-shadow: 3px -3px var(--color-accent); }
-            75% { text-shadow: -3px 3px var(--color-secondary); }
-            100% { text-shadow: 3px 3px var(--color-accent); }
-        }
-
-        .glitch-text {
-            animation: glitch 0.8s infinite;
+            font-size: 5rem;
+            line-height: 0.9;
+            margin-bottom: 1rem;
+            color: var(--color-text);
+            text-shadow: 4px 4px 0px var(--color-primary);
         }
 
         .tagline {
             background-color: var(--color-secondary);
-            color: var(--color-white);
+            color: var(--color-text);
             display: inline-block;
-            padding: 0.5rem 1rem;
-            font-size: 1.2rem;
+            padding: 0.5rem 1.5rem;
+            font-size: 1.5rem;
             font-weight: 700;
-            transform: rotate(-1deg);
-            border: var(--border-width) solid var(--color-black);
-            box-shadow: 4px 4px 0px var(--color-black);
+            transform: rotate(-2deg);
+            border: var(--border-width) solid var(--color-text);
+            box-shadow: 6px 6px 0px var(--color-text);
+        }
+
+        /* Glitch Animation */
+        @keyframes glitch {
+            0% { text-shadow: 4px 4px var(--color-primary); }
+            25% { text-shadow: -4px -4px var(--color-secondary); }
+            50% { text-shadow: 4px -4px var(--color-primary); }
+            75% { text-shadow: -4px 4px var(--color-secondary); }
+            100% { text-shadow: 4px 4px var(--color-primary); }
+        }
+
+        .glitch-text:hover {
+            animation: glitch 0.4s infinite;
+        }
+
+        /* Benefits Section */
+        .benefits-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-bottom: 4rem;
+        }
+
+        .benefit-card {
+            padding: 2rem;
+            background-color: var(--color-bg);
+            border: var(--border-width) solid var(--color-text);
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0px var(--color-text);
+            transition: transform 0.3s ease;
+        }
+
+        .benefit-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 12px 12px 0px var(--color-primary);
+        }
+
+        .benefit-icon {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        /* Control Panel */
+        .control-panel {
+            background-color: var(--color-bg);
+            padding: 3rem;
+            border: var(--border-width) solid var(--color-text);
+            box-shadow: 12px 12px 0px var(--color-text);
+            margin-bottom: 3rem;
+            position: relative;
+        }
+
+        .control-panel::before {
+            content: "CONTROL PANEL";
+            position: absolute;
+            top: -1.2rem;
+            left: 2rem;
+            background: var(--color-primary);
+            color: var(--color-bg);
+            padding: 0.2rem 1rem;
+            font-family: 'Fira Code', monospace;
+            font-weight: bold;
+            border: var(--border-width) solid var(--color-text);
         }
 
         /* Form Elements */
@@ -131,9 +200,10 @@
             padding: 1rem;
             font-family: 'Fira Code', monospace;
             font-size: 1rem;
-            border: var(--border-width) solid var(--color-black);
-            background-color: #f0f0f0;
+            border: var(--border-width) solid var(--color-text);
+            background-color: #fff;
             outline: none;
+            transition: background-color 0.2s;
         }
 
         input[type="file"]:focus, select:focus, textarea:focus {
@@ -155,142 +225,187 @@
         .prompt-btn {
             flex: 1;
             font-size: 0.9rem;
+            padding: 0.5rem;
         }
 
         /* Status Log */
         #status-log {
-            background-color: var(--color-black);
-            color: var(--color-accent);
+            background-color: var(--color-text);
+            color: var(--color-secondary);
             font-family: 'Fira Code', monospace;
             padding: 1.5rem;
-            margin-top: 2rem;
-            border: var(--border-width) solid var(--color-black);
+            margin-bottom: 3rem;
+            border: var(--border-width) solid var(--color-text);
             min-height: 100px;
             white-space: pre-wrap;
         }
 
         .status-success {
-            color: var(--color-secondary) !important;
+            color: var(--color-primary) !important;
             font-weight: bold;
         }
 
-        /* Feature Grid */
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1.5rem;
-            margin: 3rem 0;
-        }
-
-        .feature-card {
-            padding: 1.5rem;
+        /* Output Viewer */
+        .output-viewer {
+            display: none;
+            background-color: var(--color-bg);
+            padding: 2rem;
+            border: var(--border-width) solid var(--color-text);
+            box-shadow: 12px 12px 0px var(--color-secondary);
             text-align: center;
+            margin-bottom: 4rem;
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
         }
 
-        .feature-card h3 {
-            font-size: 1.2rem;
-            margin-bottom: 0.5rem;
+        .output-viewer h3 {
+            margin-bottom: 1.5rem;
+            color: var(--color-primary);
         }
 
-        /* Quote */
-        .quote-container {
-            margin: 3rem auto;
-            max-width: 800px;
-            text-align: center;
-            transform: rotate(1deg);
+        /* Responsive Video Wrapper */
+        .video-responsive {
+            position: relative;
+            width: 100%;
+            padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+            height: 0;
+            border: var(--border-width) solid var(--color-text);
+            box-shadow: 8px 8px 0px var(--color-text);
+            background-color: #000;
+            margin-bottom: 1.5rem;
+            overflow: hidden;
         }
 
-        .quote-box {
+        .video-responsive video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .download-btn {
             background-color: var(--color-secondary);
-            color: var(--color-white);
-            padding: 1.5rem;
-            font-size: 1.1rem;
-            font-style: italic;
-            border: var(--border-width) solid var(--color-black);
-            box-shadow: var(--shadow-offset) var(--shadow-offset) 0px var(--color-black);
+            text-decoration: none;
+            display: inline-block;
+            color: var(--color-text);
+            font-weight: 900;
+            padding: 1rem 2rem;
+            border: var(--border-width) solid var(--color-text);
+            box-shadow: 6px 6px 0px var(--color-text);
+            font-family: 'Fira Code', monospace;
+        }
+        
+        .download-btn:hover {
+             background-color: var(--color-primary);
+             color: var(--color-bg);
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 2rem;
+            border-top: var(--border-width) solid var(--color-text);
+            font-family: 'Fira Code', monospace;
+            font-size: 0.9rem;
         }
 
         /* Responsive */
         @media (max-width: 768px) {
-            .hero-title { font-size: 2.5rem; }
+            .hero-title { font-size: 3rem; }
             .prompt-buttons { flex-direction: column; }
+            .nb-container { padding: 1rem; }
         }
     </style>
 </head>
 <body>
 
+    <header>
+        <div class="nb-container">
+            <h1 class="hero-title glitch-text">NarrateIt</h1>
+            <p class="tagline">Your Story, Your Voice.</p>
+        </div>
+    </header>
+
     <div class="nb-container">
-        <header>
-            <h1 class="hero-title glitch-text">MANGANARRATOR</h1>
-            <p class="tagline">MVP: PROTOCOL 1.0</p>
-        </header>
+        
+        <!-- Benefits Section -->
+        <div class="benefits-grid">
+            <div class="benefit-card">
+                <span class="benefit-icon">🎭</span>
+                <h3>Engaging Narratives</h3>
+                <p>Go beyond reading. Truly tell the story with cinematic pacing.</p>
+            </div>
+            <div class="benefit-card">
+                <span class="benefit-icon">🤖</span>
+                <h3>AI Personalities</h3>
+                <p>Craft your perfect narrator: Witty, Epic, or Chill.</p>
+            </div>
+            <div class="benefit-card">
+                <span class="benefit-icon">⚡</span>
+                <h3>Perfect Pacing</h3>
+                <p>Synchronized audio & visuals for maximum immersion.</p>
+            </div>
+            <div class="benefit-card">
+                <span class="benefit-icon">🚀</span>
+                <h3>Optimized</h3>
+                <p>YouTube-ready files optimized for sharing.</p>
+            </div>
+        </div>
 
-        <form id="narrator-form">
-            <div class="nb-box" style="padding: 2rem; margin-bottom: 2rem;">
-                <label for="source-file">1. Source File (PDF Only)</label>
-                <input type="file" id="source-file" accept=".pdf" required>
+        <!-- Control Panel -->
+        <form id="narrator-form" class="control-panel">
+            <label for="source-file">1. Source File (PDF Only)</label>
+            <input type="file" id="source-file" accept=".pdf" required>
 
-                <label for="voice-select">2. Narrator Config (Voice Model)</label>
-                <select id="voice-select">
-                    <option value="aura-asteria-en" selected>Deepgram: Aura Asteria (Female)</option>
-                    <option value="aura-orion-en">Deepgram: Aura Orion (Male)</option>
-                    <option value="fallback-edge">Fallback: Edge TTS</option>
-                </select>
+            <label for="voice-select">2. Narrator Config (Voice Model)</label>
+            <select id="voice-select">
+                <option value="asteria" selected>Asteria (Witty American Female)</option>
+                <option value="orion">Orion (Dynamic American Male)</option>
+                <option value="luna">Luna (Calm American Female)</option>
+                <option value="hyperion">Hyperion (Epic Australian Male)</option>
+            </select>
 
-                <label for="personality-prompt">3. Personality System Prompt</label>
-                <div class="prompt-buttons">
-                    <button type="button" class="nb-button prompt-btn" id="btn-witty">Witty/Sarcastic</button>
-                    <button type="button" class="nb-button prompt-btn" id="btn-serious">Serious/Epic</button>
-                    <button type="button" class="nb-button prompt-btn" id="btn-chill">Educational/Chill</button>
-                </div>
-                <textarea id="personality-prompt" name="personality-prompt">You are a professional, charismatic Manga Recap Host and Storyteller known for your wit, perfect comic timing, and ability to capture the epic scale of a scene. Your primary goal is to describe the visual drama of the page, not just the text.
+            <label for="personality-prompt">3. Personality System Prompt</label>
+            <div class="prompt-buttons">
+                <button type="button" class="nb-button prompt-btn" id="btn-witty">Witty Host</button>
+                <button type="button" class="nb-button prompt-btn" id="btn-serious">Epic Trailer</button>
+                <button type="button" class="nb-button prompt-btn" id="btn-chill">Chill Historian</button>
+            </div>
+            <textarea id="personality-prompt" name="personality-prompt">You are a professional, charismatic Manga Recap Host and Storyteller known for your wit, perfect comic timing, and ability to capture the epic scale of a scene. Your primary goal is to describe the visual drama of the page, not just the text.
 
 Maintain an energetic, slightly sarcastic tone. Deliver one short, spontaneous reaction (a joke, an impressed sigh, or a cutting remark) per page based on the most absurd or dramatic visual element.</textarea>
 
-                <button type="submit" class="nb-button primary">GENERATE VIDEO & DEPLOY PROTOCOL</button>
-            </div>
+            <button type="submit" class="nb-button primary">GENERATE VIDEO</button>
         </form>
 
+        <!-- Status Log -->
         <div id="status-log" class="nb-box">Awaiting Protocol Deployment...</div>
 
-        <!-- Video Player Container (Hidden by default) -->
-        <div id="video-container" class="nb-box" style="display: none; margin-top: 2rem; padding: 1rem; text-align: center;">
-            <h3 style="margin-bottom: 1rem; color: var(--color-secondary);">GENERATED OUTPUT</h3>
-            <video id="final-video-player" controls style="width: 100%; border: 2px solid var(--color-black); box-shadow: 4px 4px 0px var(--color-black);">
-                Your browser does not support the video tag.
-            </video>
+        <!-- Output Viewer -->
+        <div id="video-container" class="output-viewer">
+            <h3>GENERATED OUTPUT</h3>
+            <div class="video-responsive">
+                <video id="final-video-player" controls playsinline>
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+            <br>
+            <a id="download-link" href="#" class="download-btn" target="_blank">DOWNLOAD VIDEO</a>
         </div>
 
-        <div class="features-grid">
-            <div class="nb-box feature-card">
-                <h3>Gemini 1.5</h3>
-                <p>Vision & Script</p>
-            </div>
-            <div class="nb-box feature-card">
-                <h3>Deepgram</h3>
-                <p>Voice Synthesis</p>
-            </div>
-            <div class="nb-box feature-card">
-                <h3>FFmpeg</h3>
-                <p>Video Stitching</p>
-            </div>
-            <div class="nb-box feature-card">
-                <h3>PyMuPDF</h3>
-                <p>Image Extraction</p>
-            </div>
-        </div>
-
-        <div class="quote-container">
-            <div class="quote-box">
-                "The difference between a robot and a human? The human can crack a joke. Narrator Protocol Engaged."
-            </div>
-        </div>
     </div>
+
+    <footer>
+        <p>NarrateIt // Built by DevNick</p>
+    </footer>
 
     <script>
         // 1. Prompt Management
         const prompts = {
-            witty: "Act as an energetic, witty manga narrator making a video for fans. Read the panels in the correct Japanese order (Right-to-Left). Describe the visual action briefly and add one short, sarcastic joke or witty comment about the characters' expressions or the situation. Output ONLY the text to be spoken.",
+            witty: "You are a professional, charismatic Manga Recap Host and Storyteller known for your wit, perfect comic timing, and ability to capture the epic scale of a scene. Your primary goal is to describe the visual drama of the page, not just the text.\n\nMaintain an energetic, slightly sarcastic tone. Deliver one short, spontaneous reaction (a joke, an impressed sigh, or a cutting remark) per page based on the most absurd or dramatic visual element.",
             serious: "Act as a solemn, epic movie trailer narrator. Describe the action using dramatic, powerful, and mysterious language. Read the dialogue straight, but inject intense pauses and emphasis. Do not use humor. Output ONLY the text to be spoken.",
             chill: "Act as a relaxed, knowledgeable comic book historian. Read the dialogue and provide brief, informative context about the characters or world-building elements. Keep the tone calm, friendly, and analytical. Output ONLY the text to be spoken."
         };
@@ -315,6 +430,7 @@ Maintain an energetic, slightly sarcastic tone. Deliver one short, spontaneous r
         const submitBtn = form.querySelector('button[type="submit"]');
         const videoContainer = document.getElementById('video-container');
         const videoPlayer = document.getElementById('final-video-player');
+        const downloadLink = document.getElementById('download-link');
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -362,11 +478,11 @@ Maintain an energetic, slightly sarcastic tone. Deliver one short, spontaneous r
                 if (response.ok) {
                     // Final Success
                     statusLog.innerHTML += `\n\n[PROTOCOL COMPLETE] Video successfully generated.`;
-                    statusLog.innerHTML += `\n> DOWNLOAD LINK ESTABLISHED: <a href="${data.download_url}" style="color: var(--color-button); text-decoration: underline;" target="_blank">CLICK TO DOWNLOAD VIDEO</a>`;
                     statusLog.classList.add('status-success');
                     
                     // Show Video Player
                     videoPlayer.src = data.download_url;
+                    downloadLink.href = data.download_url;
                     videoContainer.style.display = 'block';
                 } else {
                     statusLog.innerHTML += `\n\n[ERROR] Protocol Failed: ${data.error}`;
@@ -377,7 +493,7 @@ Maintain an energetic, slightly sarcastic tone. Deliver one short, spontaneous r
             } finally {
                 // Re-enable button
                 submitBtn.disabled = false;
-                submitBtn.textContent = "GENERATE VIDEO & DEPLOY PROTOCOL";
+                submitBtn.textContent = "GENERATE VIDEO";
             }
         });
     </script>
