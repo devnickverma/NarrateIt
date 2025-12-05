@@ -65,31 +65,31 @@ def generate_script_for_page(image_path, custom_prompt, page_num):
     CRITICAL INSTRUCTION:
     1. **Analyze Panel Flow:** You **must** analyze the panel layout and dialogue placement to determine the **logically intended reading order** for maximum dramatic impact. The flow must be natural and cinematic.
     2. **Structured Output:** Output a **JSON Object** with a single key "script_segments" containing an array of objects.
-    
+    3. **SSML Pauses (CRITICAL):** You MUST insert SSML `<break time="..."/>` tags directly into the `text` field to control pacing.
+       - **Speaker Change / Narration Transition:** Insert `<break time="1200ms"/>` at the start of the new speaker's text.
+       - **Panel Transition:** Insert `<break time="800ms"/>` when moving to a new visual panel mid-segment.
+       - **Dramatic Pause:** Insert `<break time="400ms"/>` for emphasis or suspense (e.g., before a punchline).
+
     JSON Schema Requirement:
     {{
       "script_segments": [
         {{
           "type": "narration",
-          "text": "Describe the scene before any talking. Focus on setting and mood."
+          "text": "The villagers gaze up at the castle <break time='1000ms'/> terrified by the shadow looming over them."
         }},
         {{
           "type": "dialogue",
-          "speaker": "Character Name",
-          "text": "The character's exact dialogue."
-        }},
-        {{
-          "type": "narration",
-          "text": "Describe the character's reaction, change in expression, or the action in the next panel."
+          "speaker": "The Hero",
+          "text": "<break time='1200ms'/> Are you ready to face him? <break time='500ms'/> I know I am not."
         }}
       ]
     }}
 
     **"Best Narrator" Checklist (REQUIRED for every page):**
-    1. **Opening Hook:** Start every page with a **Narration segment** that sets the scene (e.g., "We zoom in on the castle grounds...").
-    2. **Facial Analysis:** Before reading a character's dialogue, insert a **Narration segment** describing their **emotion and visual state** (e.g., "Character X, with an utterly terrified look on their face...").
-    3. **Action Segregation:** Insert a **Narration segment** *between* dialogue blocks if the panel flow shows a pause, a sudden movement, or a scene transition.
-    4. **Closing Scene:** End the script for the page with a final **Narration segment** describing the final panel's cliffhanger, facial expression, or transition.
+    1. **Opening Hook:** Start every page with a **Narration segment** that sets the scene.
+    2. **Facial Analysis:** Before reading a character's dialogue, insert a **Narration segment** describing their **emotion**.
+    3. **Action Segregation:** Insert a **Narration segment** *between* dialogue blocks if there is a scene transition.
+    4. **Closing Scene:** End the script with a final **Narration segment** describing the cliffhanger or transition.
     """
     
     try:
@@ -117,7 +117,7 @@ def generate_audio_for_segment(text, output_filename, voice_model):
         "asteria": "aura-asteria-en",
         "orion": "aura-orion-en",
         "luna": "aura-luna-en",
-        "hyperion": "aura-hyperion-en" # Assuming hyperion follows the standard naming convention
+        "hyperion": "aura-orion-en" # FALLBACK: Hyperion doesn't exist in Aura yet, fallback to Orion
     }
     
     # Use mapped value if exists, otherwise use the input (fallback)
@@ -127,8 +127,11 @@ def generate_audio_for_segment(text, output_filename, voice_model):
         deepgram = DeepgramClient(api_key=api_key)
         os.makedirs(os.path.dirname(output_filename), exist_ok=True)
         
+        # Wrap text in <speak> tag for SSML processing
+        ssml_text = f"<speak>{text}</speak>"
+        
         response = deepgram.speak.v1.audio.generate(
-            text=text,
+            text=ssml_text,
             model=model_tag
         )
         
@@ -154,9 +157,8 @@ def process_page_audio(page_data, page_num, audio_dir, voice_model):
     
     for seg in segments:
         text = seg.get("text", "")
-        # We can add a tiny pause or context if needed, but for now just concatenate.
-        # If it's narration, maybe we could prepend something, but the prompt asks for "text to be spoken".
-        # So we assume 'text' is ready to read.
+        # Concatenate text. Gemini is now responsible for inserting <break> tags for pauses.
+        # We add a space just in case, but the SSML tags will handle the timing.
         full_text += f"{text} "
     
     audio_filename = os.path.join(audio_dir, f"page_{page_num:03d}.mp3")
@@ -236,24 +238,27 @@ def run_narration_pipeline(pdf_path: str, voice_model: str, custom_prompt: str, 
     if not images:
         raise Exception("Failed to extract images from PDF.")
     
-    # Step 2: Parallel Script Generation
-    logging.info("STEP 2/4: Submitting ALL pages (batch) to Gemini for scripting...")
+    # Step 2: Sequential Script Generation (Strict Rate Limiting for Free Tier)
+    # The Free Tier allows 15 requests per minute, which is 1 request every 4 seconds.
+    # Parallel processing even with delays is risky because threads can wake up simultaneously.
+    # We will switch to a robust sequential loop with a guaranteed 5-second delay to be safe.
+    logging.info("STEP 2/4: Submitting pages to Gemini for scripting (Sequential with Delay)...")
     page_scripts = [None] * len(images)
     
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        # Submit all tasks
-        future_to_page = {
-            executor.submit(generate_script_for_page, img_path, custom_prompt, i+1): i 
-            for i, img_path in enumerate(images)
-        }
-        
-        for future in concurrent.futures.as_completed(future_to_page):
-            page_idx = future_to_page[future]
-            try:
-                data = future.result()
-                page_scripts[page_idx] = data
-            except Exception as e:
-                logging.error(f"Script generation failed for page {page_idx+1}: {e}")
+    for i, img_path in enumerate(images):
+        logging.info(f"Processing Page {i+1}/{len(images)}...")
+        try:
+            # Generate script
+            data = generate_script_for_page(img_path, custom_prompt, i+1)
+            page_scripts[i] = data
+            
+            # CRITICAL: Strict delay to respect 15 RPM limit (60s / 15 = 4s).
+            # We use 5s to be absolutely safe + processing time.
+            if i < len(images) - 1: # Don't sleep after the last page
+                time.sleep(5)
+                
+        except Exception as e:
+            logging.error(f"Script generation failed for page {i+1}: {e}")
 
     # Step 3: Parallel Audio Generation
     logging.info("STEP 3/4: Concurrently generating ALL audio files via Deepgram...")

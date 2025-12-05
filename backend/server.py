@@ -15,7 +15,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, '../uploaded_pdfs')
 OUTPUT_FOLDER = os.path.join(BASE_DIR, '../output/videos')
 ALLOWED_EXTENSIONS = {'pdf'}
-MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB limit
+MAX_CONTENT_LENGTH = 200 * 1024 * 1024  # 200 MB limit
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['OUTPUT_FOLDER'] = OUTPUT_FOLDER
@@ -88,6 +88,12 @@ def download_file(filename):
     except Exception as e:
         logging.error(f"Download failed for {filename}: {e}")
         return jsonify({'error': 'File not found'}), 404
+
+@app.route('/demo/<path:filename>')
+def serve_demo(filename):
+    """Serve demo files."""
+    demo_folder = os.path.join(BASE_DIR, '../Demo')
+    return send_from_directory(demo_folder, filename)
 
 if __name__ == '__main__':
     # Development server
