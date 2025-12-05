@@ -355,13 +355,25 @@
             </div>
         </div>
 
+        <!-- Demo Section -->
+        <div class="nb-box" style="margin-bottom: 4rem; padding: 2rem; text-align: center;">
+            <h2 style="margin-bottom: 1.5rem; color: var(--color-primary);">Watch the Demo</h2>
+            <div class="video-responsive">
+                <video controls poster="">
+                    <source src="/demo/MangaTest_narrated.mp4" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+            <p style="margin-top: 1rem; font-family: 'Fira Code', monospace; font-size: 0.9rem;">(Generated with "Asteria" Voice & "Witty Host" Personality)</p>
+        </div>
+
         <!-- Control Panel -->
         <form id="narrator-form" class="control-panel">
             <label for="source-file">1. Source File (PDF Only)</label>
-            <input type="file" id="source-file" accept=".pdf" required>
+            <input type="file" id="source-file" name="manga-file" accept=".pdf" required>
 
             <label for="voice-select">2. Narrator Config (Voice Model)</label>
-            <select id="voice-select">
+            <select id="voice-select" name="voice-select">
                 <option value="asteria" selected>Asteria (Witty American Female)</option>
                 <option value="orion">Orion (Dynamic American Male)</option>
                 <option value="luna">Luna (Calm American Female)</option>
@@ -382,7 +394,19 @@ Maintain an energetic, slightly sarcastic tone. Deliver one short, spontaneous r
         </form>
 
         <!-- Status Log -->
-        <div id="status-log" class="nb-box">Awaiting Protocol Deployment...</div>
+        <div id="status-log" class="nb-box" style="white-space: pre-wrap;">Awaiting Protocol Deployment...</div>
+
+        <!-- Progress Bar (Initially Hidden) -->
+        <div id="progress-container" class="nb-box" style="display: none; margin-top: 1rem;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                <span id="progress-text">Initializing...</span>
+                <span id="progress-percent">0%</span>
+            </div>
+            <div style="width: 100%; height: 20px; background: #333; border: 2px solid var(--color-text);">
+                <div id="progress-fill" style="width: 0%; height: 100%; background: var(--color-primary); transition: width 0.3s ease;"></div>
+            </div>
+            <p id="eta-text" style="font-size: 0.8rem; margin-top: 0.5rem; color: #888;">Estimated Time: Calculating...</p>
+        </div>
 
         <!-- Output Viewer -->
         <div id="video-container" class="output-viewer">
@@ -424,78 +448,102 @@ Maintain an energetic, slightly sarcastic tone. Deliver one short, spontaneous r
             promptTextarea.value = prompts.chill;
         });
 
-        // 2. Form Submission & Status Simulation
+        // 2. Form Submission & Polling
         const form = document.getElementById('narrator-form');
         const statusLog = document.getElementById('status-log');
         const submitBtn = form.querySelector('button[type="submit"]');
         const videoContainer = document.getElementById('video-container');
         const videoPlayer = document.getElementById('final-video-player');
         const downloadLink = document.getElementById('download-link');
+        
+        const progressContainer = document.getElementById('progress-container');
+        const progressFill = document.getElementById('progress-fill');
+        const progressText = document.getElementById('progress-text');
+        const progressPercent = document.getElementById('progress-percent');
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            // Disable button to prevent double submit
+            // UI Reset
             submitBtn.disabled = true;
-            submitBtn.textContent = "PROCESSING...";
-            
-            // Clear previous status and hide video
-            statusLog.innerHTML = "INITIALIZING PROTOCOL... Checking file and settings...";
-            statusLog.classList.remove('status-success');
-            videoContainer.style.display = 'none';
-            videoPlayer.src = "";
+            submitBtn.textContent = "INITIALIZING...";
+            statusLog.textContent = "Deploying Agents...";
+            videoContainer.classList.remove('active');
+            progressContainer.style.display = "block";
+            progressFill.style.width = "0%";
+            progressText.textContent = "Starting...";
 
-            const formData = new FormData();
-            formData.append('manga-file', document.getElementById('source-file').files[0]);
-            formData.append('voice-select', document.getElementById('voice-select').value);
-            formData.append('personality-prompt', document.getElementById('personality-prompt').value);
+            const formData = new FormData(form);
 
             try {
-                // Step 1
-                statusLog.innerHTML += "\n> STEP 1/4: Converting PDF pages to images...";
-                
-                // Step 2
-                setTimeout(() => {
-                    statusLog.innerHTML += "\n> STEP 2/4: Submitting ALL pages (batch) to Gemini for scripting...";
-                }, 2000);
-
-                // Step 3
-                setTimeout(() => {
-                    statusLog.innerHTML += "\n> STEP 3/4: Concurrently generating ALL audio files via Deepgram...";
-                }, 5000);
-
-                 // Step 4
-                setTimeout(() => {
-                    statusLog.innerHTML += "\n> STEP 4/4: Stitching all synchronized video chunks...";
-                }, 8000);
-
-                const response = await fetch('/api/generate-video', {
+                // Step 1: Start Task
+                const startResponse = await fetch('/api/generate-video', {
                     method: 'POST',
-                    body: formData,
+                    body: formData
                 });
-                const data = await response.json();
 
-                if (response.ok) {
-                    // Final Success
-                    statusLog.innerHTML += `\n\n[PROTOCOL COMPLETE] Video successfully generated.`;
-                    statusLog.classList.add('status-success');
-                    
-                    // Show Video Player
-                    videoPlayer.src = data.download_url;
-                    downloadLink.href = data.download_url;
-                    videoContainer.style.display = 'block';
-                } else {
-                    statusLog.innerHTML += `\n\n[ERROR] Protocol Failed: ${data.error}`;
+                if (!startResponse.ok) {
+                    throw new Error(`Server Error: ${startResponse.statusText}`);
                 }
 
+                const startData = await startResponse.json();
+                const taskId = startData.task_id;
+                
+                statusLog.textContent = `Task Started via Async Protocol (ID: ${taskId})...\nPolling status...`;
+
+                // Step 2: Poll Status
+                const pollInterval = setInterval(async () => {
+                    try {
+                        const statusResponse = await fetch(`/api/status/${taskId}`);
+                        const statusData = await statusResponse.json();
+
+                        if (statusData.status === 'processing') {
+                            // Update UI
+                            const percent = statusData.progress;
+                            progressFill.style.width = `${percent}%`;
+                            progressPercent.textContent = `${percent}%`;
+                            progressText.textContent = statusData.message;
+                            statusLog.textContent = `> ${statusData.message}`; // Live logs
+                            submitBtn.textContent = "GENERATING...";
+                        } 
+                        else if (statusData.status === 'completed') {
+                            // Success
+                            clearInterval(pollInterval);
+                            progressFill.style.width = "100%";
+                            progressPercent.textContent = "100%";
+                            progressText.textContent = "Complete!";
+                            statusLog.textContent = "> MISSION COMPLETE. VIDEO GENERATED.";
+                            
+                            submitBtn.disabled = false;
+                            submitBtn.textContent = "GENERATE VIDEO";
+                            
+                            // Show Video
+                            videoPlayer.src = statusData.download_url;
+                            downloadLink.href = statusData.download_url;
+                            videoContainer.classList.add('active');
+                        } 
+                        else if (statusData.status === 'failed') {
+                            // Failure
+                            clearInterval(pollInterval);
+                            submitBtn.disabled = false;
+                            submitBtn.textContent = "GENERATE VIDEO";
+                            statusLog.textContent = `> ERROR: ${statusData.error}`;
+                            progressContainer.style.backgroundColor = "#ff444433";
+                            alert("Generation Failed: " + statusData.error);
+                        }
+                    } catch (err) {
+                        console.error("Polling error:", err);
+                    }
+                }, 1000); // Poll every 1 second
+
             } catch (error) {
-                statusLog.innerHTML += `\n\n[CRITICAL ERROR] Connection Lost: ${error.message}`;
-            } finally {
-                // Re-enable button
+                console.error('Error:', error);
+                statusLog.textContent = "CRITICAL ERROR: " + error.message;
                 submitBtn.disabled = false;
                 submitBtn.textContent = "GENERATE VIDEO";
             }
         });
+
     </script>
 </body>
 </html>

@@ -12,6 +12,7 @@ from PIL import Image
 from deepgram import DeepgramClient
 from pydub import AudioSegment
 import subprocess
+import random
 
 # Load environment variables from the parent directory
 load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
@@ -92,18 +93,36 @@ def generate_script_for_page(image_path, custom_prompt, page_num):
     4. **Closing Scene:** End the script with a final **Narration segment** describing the cliffhanger or transition.
     """
     
-    try:
-        img = Image.open(image_path)
-        logging.info(f"Sending Page {page_num} to Gemini...")
-        response = model.generate_content([full_prompt, img])
-        
-        # Parse JSON
-        script_data = json.loads(response.text)
-        logging.info(f"Script generated for Page {page_num}")
-        return script_data
-    except Exception as e:
-        logging.error(f"Error generating script for Page {page_num}: {e}")
-        return None
+    MAX_RETRIES = 3
+    RETRY_DELAY = 10  # Seconds
+    
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            img = Image.open(image_path)
+            logging.info(f"Sending Page {page_num} to Gemini (Attempt {attempt+1})...")
+            response = model.generate_content([full_prompt, img])
+            
+            # Parse JSON
+            script_data = json.loads(response.text)
+            logging.info(f"Script generated for Page {page_num}")
+            return script_data
+            
+        except Exception as e:
+            # Check for Rate Limit (429) or Overloaded (503)
+            # The python library wraps the error, but we look for "429" in the string
+            if "429" in str(e) or "Resource exhausted" in str(e):
+                if attempt < MAX_RETRIES:
+                    wait_time = RETRY_DELAY * (2 ** attempt)  # Exponential Backoff: 10s, 20s, 40s
+                    # Add jitter
+                    wait_time += random.uniform(0, 5)
+                    logging.warning(f"Rate Limit hit for Page {page_num}. Retrying in {wait_time:.1f}s...")
+                    time.sleep(wait_time)
+                else:
+                    logging.error(f"Failed to generate script for Page {page_num} after {MAX_RETRIES} retries: {e}")
+                    return None
+            else:
+                logging.error(f"Error generating script for Page {page_num}: {e}")
+                return None
 
 def generate_audio_for_segment(text, output_filename, voice_model):
     """Generates audio for a single segment using Deepgram."""
@@ -123,28 +142,40 @@ def generate_audio_for_segment(text, output_filename, voice_model):
     # Use mapped value if exists, otherwise use the input (fallback)
     model_tag = voice_map.get(voice_model, voice_model)
 
-    try:
-        deepgram = DeepgramClient(api_key=api_key)
-        os.makedirs(os.path.dirname(output_filename), exist_ok=True)
-        
-        # Wrap text in <speak> tag for SSML processing
-        ssml_text = f"<speak>{text}</speak>"
-        
-        response = deepgram.speak.v1.audio.generate(
-            text=ssml_text,
-            model=model_tag
-        )
-        
-        with open(output_filename, "wb") as f:
-            for chunk in response:
-                if chunk:
-                    f.write(chunk)
-        
-        audio = AudioSegment.from_file(output_filename)
-        return len(audio) / 1000.0
-    except Exception as e:
-        logging.error(f"Error generating audio: {e}")
-        return None
+    MAX_RETRIES = 3
+    RETRY_DELAY = 5
+
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            deepgram = DeepgramClient(api_key=api_key)
+            os.makedirs(os.path.dirname(output_filename), exist_ok=True)
+            
+            # Wrap text in <speak> tag for SSML processing
+            ssml_text = f"<speak>{text}</speak>"
+            
+            response = deepgram.speak.v1.audio.generate(
+                text=ssml_text,
+                model=model_tag
+            )
+            
+            with open(output_filename, "wb") as f:
+                for chunk in response:
+                    if chunk:
+                        f.write(chunk)
+            
+            audio = AudioSegment.from_file(output_filename)
+            return len(audio) / 1000.0
+            
+        except Exception as e:
+            # Retry on connection errors (WinError 10060) or rate limits
+            if attempt < MAX_RETRIES:
+                wait_time = RETRY_DELAY * (2 ** attempt)
+                wait_time += random.uniform(0, 2)
+                logging.warning(f"Audio generation failed (Attempt {attempt+1}). Retrying in {wait_time:.1f}s... Error: {e}")
+                time.sleep(wait_time)
+            else:
+                logging.error(f"Failed to generate audio after {MAX_RETRIES} retries: {e}")
+                return None
 
 def process_page_audio(page_data, page_num, audio_dir, voice_model):
     """Processes all audio segments for a single page."""
@@ -198,33 +229,45 @@ def create_video(segments, output_filename):
         "ffmpeg", "-y",
         "-f", "concat", "-safe", "0", "-i", images_txt,
         "-f", "concat", "-safe", "0", "-i", audios_txt,
-        "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+        # RESIZE TO 1080p HEIGHT (maintain aspect ratio, width divisible by 2)
+        # 13k pixels causes x264 memory crash.
+        "-vf", "scale=-2:1080,format=yuv420p",
         "-c:v", "libx264",
         "-crf", "24",  # Optimization: CRF 24 for balance of size/quality
         "-preset", "medium",
         "-c:a", "aac",
         "-b:a", "128k",
-        "-pix_fmt", "yuv420p", "-shortest",
+        "-shortest",
         output_filename
     ]
     
     try:
         logging.info(f"Running FFmpeg...")
+        # Capture output=True captures stdout/stderr, but if it fails, we need to log e.stderr
         subprocess.run(cmd, check=True, capture_output=True)
         logging.info(f"Video created: {output_filename}")
         
+        # Cleanup only on success
         if os.path.exists(images_txt): os.remove(images_txt)
         if os.path.exists(audios_txt): os.remove(audios_txt)
         return True
     except subprocess.CalledProcessError as e:
-        logging.error(f"FFmpeg failed: {e}")
+        # DECODE stderr to see the real error
+        error_msg = e.stderr.decode('utf-8', errors='replace') if e.stderr else "No stderr captured"
+        logging.error(f"FFmpeg failed with return code {e.returncode}")
+        logging.error(f"FFmpeg Error Output:\n{error_msg}")
         return False
 
-def run_narration_pipeline(pdf_path: str, voice_model: str, custom_prompt: str, output_dir: str) -> str:
+def run_narration_pipeline(pdf_path: str, voice_model: str, custom_prompt: str, output_dir: str, progress_callback=None) -> str:
     """
-    Executes the full video generation pipeline with parallel processing.
+    Executes the full video generation pipeline with granular progress tracking.
     """
+    def report_progress(percent, message):
+        if progress_callback:
+            progress_callback(percent, message)
+            
     logging.info(f"--- Starting Pipeline for {pdf_path} ---")
+    report_progress(5, "INITIALIZING PROTOCOL... Checking file and settings...")
     
     # Setup directories
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -233,55 +276,58 @@ def run_narration_pipeline(pdf_path: str, voice_model: str, custom_prompt: str, 
     audio_dir = os.path.join(temp_dir, "audio")
     
     # Step 1: Extract Images
-    logging.info("STEP 1/4: Converting PDF pages to images...")
+    report_progress(10, "STEP 1/4: Analyzing visual data (PDF to Images)...")
     images = extract_images(pdf_path, images_dir)
     if not images:
         raise Exception("Failed to extract images from PDF.")
     
+    total_pages = len(images)
+    report_progress(15, f"Analysis Complete. Found {total_pages} pages.")
+
     # Step 2: Sequential Script Generation (Strict Rate Limiting for Free Tier)
-    # The Free Tier allows 15 requests per minute, which is 1 request every 4 seconds.
-    # Parallel processing even with delays is risky because threads can wake up simultaneously.
-    # We will switch to a robust sequential loop with a guaranteed 5-second delay to be safe.
-    logging.info("STEP 2/4: Submitting pages to Gemini for scripting (Sequential with Delay)...")
-    page_scripts = [None] * len(images)
+    report_progress(20, "STEP 2/4: Generating witty scripts (Sequentially)...")
+    page_scripts = [None] * total_pages
     
     for i, img_path in enumerate(images):
-        logging.info(f"Processing Page {i+1}/{len(images)}...")
+        current_percent = 20 + int((i / total_pages) * 40) # 20% to 60%
+        report_progress(current_percent, f"Scripting Page {i+1}/{total_pages}...")
+        
+        logging.info(f"Processing Page {i+1}/{total_pages}...")
         try:
             # Generate script
             data = generate_script_for_page(img_path, custom_prompt, i+1)
             page_scripts[i] = data
             
             # CRITICAL: Strict delay to respect 15 RPM limit (60s / 15 = 4s).
-            # We use 5s to be absolutely safe + processing time.
-            if i < len(images) - 1: # Don't sleep after the last page
+            if i < total_pages - 1: # Don't sleep after the last page
                 time.sleep(5)
                 
         except Exception as e:
             logging.error(f"Script generation failed for page {i+1}: {e}")
 
-    # Step 3: Parallel Audio Generation
-    logging.info("STEP 3/4: Concurrently generating ALL audio files via Deepgram...")
-    final_segments = [None] * len(images)
+    # Step 3: Sequential Audio Generation (Strict Rate Limiting for Deepgram)
+    report_progress(60, "STEP 3/4: Synthesizing voiceover (Sequentially)...")
+    final_segments = [None] * total_pages
     
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        future_to_page = {}
-        for i, script_data in enumerate(page_scripts):
-            if script_data:
-                future = executor.submit(process_page_audio, script_data, i+1, audio_dir, voice_model)
-                future_to_page[future] = i
-            else:
-                logging.warning(f"No script for page {i+1}, skipping audio.")
+    for i, script_data in enumerate(page_scripts):
+        current_percent = 60 + int((i / total_pages) * 30) # 60% to 90%
+        report_progress(current_percent, f"Voicing Page {i+1}/{total_pages}...")
         
-        for future in concurrent.futures.as_completed(future_to_page):
-            page_idx = future_to_page[future]
+        if script_data:
             try:
-                result = future.result()
+                result = process_page_audio(script_data, i+1, audio_dir, voice_model)
                 if result:
-                    result["image"] = images[page_idx]
-                    final_segments[page_idx] = result
+                    result["image"] = images[i]
+                    final_segments[i] = result
             except Exception as e:
-                logging.error(f"Audio generation failed for page {page_idx+1}: {e}")
+                logging.error(f"Audio generation failed for page {i+1}: {e}")
+            
+            # Throttle Deepgram slightly to be safe? 
+            # Deepgram handles concurrency better but we saw 429s. 
+            # Let's add a small 1s delay just to be safe.
+            time.sleep(1)
+        else:
+            logging.warning(f"No script for page {i+1}, skipping audio.")
     
     # Filter out None segments
     valid_segments = [s for s in final_segments if s is not None]
@@ -290,7 +336,7 @@ def run_narration_pipeline(pdf_path: str, voice_model: str, custom_prompt: str, 
         raise Exception("No segments were successfully generated.")
 
     # Step 4: Video Assembly
-    logging.info("STEP 4/4: Stitching all synchronized video chunks...")
+    report_progress(90, "STEP 4/4: Stitching final video output...")
     output_filename = f"{os.path.splitext(os.path.basename(pdf_path))[0]}_narrated.mp4"
     final_video_path = os.path.join(output_dir, output_filename)
     
@@ -299,5 +345,6 @@ def run_narration_pipeline(pdf_path: str, voice_model: str, custom_prompt: str, 
     if not success:
         raise Exception("Video assembly failed.")
         
+    report_progress(100, "GENERATION COMPLETE! Video ready.")
     logging.info(f"Pipeline Complete. Video saved to {final_video_path}")
     return output_filename

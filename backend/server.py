@@ -1,8 +1,13 @@
 import os
 import logging
+import threading
+import uuid
 from flask import Flask, request, jsonify, send_from_directory, render_template
 from werkzeug.utils import secure_filename
 from generator import run_narration_pipeline
+
+# Global dictionary to store task status
+TASKS = {}
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -58,24 +63,54 @@ def generate_video():
         logging.info(f"File uploaded: {filename}")
         logging.info(f"Starting generation task with voice: {voice_model}")
 
-        try:
-            # Call the pipeline
-            # Pass OUTPUT_FOLDER so generator knows where to save
-            output_filename = run_narration_pipeline(filepath, voice_model, custom_prompt, app.config['OUTPUT_FOLDER'])
-            
-            download_url = f"/download/{output_filename}"
-            
-            logging.info(f"Video generated: {output_filename}")
-            
-            return jsonify({
-                'message': 'Video generation initiated successfully.',
-                'filename': output_filename,
-                'download_url': download_url
-            }), 200
+        logging.info(f"Starting generation task with voice: {voice_model}")
 
-        except Exception as e:
-            logging.error(f"Pipeline failed: {e}")
-            return jsonify({'error': str(e)}), 500
+        # Generate Task ID
+        task_id = str(uuid.uuid4())
+        TASKS[task_id] = {
+            "status": "processing",
+            "progress": 0,
+            "message": "Initializing...",
+            "filename": None,
+            "download_url": None,
+            "error": None
+        }
+
+        # Progress Callback Function
+        def update_progress(percent, message):
+            if task_id in TASKS:
+                TASKS[task_id]["progress"] = percent
+                TASKS[task_id]["message"] = message
+
+        # Background Thread Function
+        def background_task(tid, fpath, vmodel, cprompt, out_dir):
+            try:
+                output_file = run_narration_pipeline(fpath, vmodel, cprompt, out_dir, progress_callback=update_progress)
+                TASKS[tid]["status"] = "completed"
+                TASKS[tid]["progress"] = 100
+                TASKS[tid]["message"] = "Completed!"
+                TASKS[tid]["filename"] = output_file
+                TASKS[tid]["download_url"] = f"/download/{output_file}"
+            except Exception as e:
+                TASKS[tid]["status"] = "failed"
+                TASKS[tid]["error"] = str(e)
+                logging.error(f"Task {tid} failed: {e}")
+
+        # Start Thread
+        thread = threading.Thread(target=background_task, args=(task_id, filepath, voice_model, custom_prompt, app.config['OUTPUT_FOLDER']))
+        thread.start()
+        
+        return jsonify({
+            'message': 'Video generation started.',
+            'task_id': task_id
+        }), 202
+
+@app.route('/api/status/<task_id>', methods=['GET'])
+def get_task_status(task_id):
+    task = TASKS.get(task_id)
+    if task:
+        return jsonify(task)
+    return jsonify({'error': 'Task not found'}), 404
 
     return jsonify({'error': 'Invalid file type. Only PDF allowed.'}), 400
 
