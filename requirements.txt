@@ -1,5 +1,7 @@
-google-generativeai
+google-genai
 deepgram-sdk
 pymupdf
 pydub
 python-dotenv
+flask
+Pillow
