@@ -6,7 +6,8 @@ import shutil
 import json
 import concurrent.futures
 import fitz  # PyMuPDF
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 from PIL import Image
 from deepgram import DeepgramClient
@@ -20,11 +21,11 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def configure_genai():
+def get_genai_client():
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise ValueError("GOOGLE_API_KEY not found in environment variables.")
-    genai.configure(api_key=api_key)
+    return genai.Client(api_key=api_key)
 
 def extract_images(pdf_path, output_dir):
     """Converts PDF pages to high-resolution PNGs."""
@@ -55,9 +56,9 @@ def extract_images(pdf_path, output_dir):
 
 def generate_script_for_page(image_path, custom_prompt, page_num):
     """Generates a structured JSON script using Gemini for a single page."""
-    configure_genai()
+    client = get_genai_client()
     # Use JSON mode for structured output
-    model = genai.GenerativeModel('gemini-2.0-flash', generation_config={"response_mime_type": "application/json"})
+    # Model configuration is now passed during generation
     
     # Enhanced prompt for logical flow and JSON structure
     full_prompt = f"""
@@ -100,7 +101,11 @@ def generate_script_for_page(image_path, custom_prompt, page_num):
         try:
             img = Image.open(image_path)
             logging.info(f"Sending Page {page_num} to Gemini (Attempt {attempt+1})...")
-            response = model.generate_content([full_prompt, img])
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=[full_prompt, img],
+                config=types.GenerateContentConfig(response_mime_type="application/json")
+            )
             
             # Parse JSON
             script_data = json.loads(response.text)
