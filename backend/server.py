@@ -14,6 +14,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 app = Flask(__name__, static_folder="../frontend", template_folder="../frontend")
 
+# Silence Flask/Werkzeug request logs
+logging.getLogger('werkzeug').setLevel(logging.ERROR)
+
 # Configuration
 # Use absolute paths to avoid CWD issues
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

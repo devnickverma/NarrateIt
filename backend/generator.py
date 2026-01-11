@@ -14,6 +14,7 @@ from deepgram import DeepgramClient
 from pydub import AudioSegment
 import subprocess
 import random
+import re
 
 # Load environment variables from the parent directory
 load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
@@ -35,7 +36,7 @@ def extract_images(pdf_path, output_dir):
 
     try:
         doc = fitz.open(pdf_path)
-        logging.info(f"Opened '{pdf_path}', found {len(doc)} pages.")
+        logging.debug(f"Opened '{pdf_path}', found {len(doc)} pages.")
 
         image_paths = []
         for i, page in enumerate(doc):
@@ -47,7 +48,7 @@ def extract_images(pdf_path, output_dir):
             filepath = os.path.join(output_dir, filename)
             pix.save(filepath)
             image_paths.append(filepath)
-            logging.info(f"Saved {filepath}")
+            logging.debug(f"Saved {filepath}")
         
         return sorted(image_paths)
     except Exception as e:
@@ -67,22 +68,24 @@ def generate_script_for_page(image_path, custom_prompt, page_num):
     CRITICAL INSTRUCTION:
     1. **Analyze Panel Flow:** You **must** analyze the panel layout and dialogue placement to determine the **logically intended reading order** for maximum dramatic impact. The flow must be natural and cinematic.
     2. **Structured Output:** Output a **JSON Object** with a single key "script_segments" containing an array of objects.
-    3. **SSML Pauses (CRITICAL):** You MUST insert SSML `<break time="..."/>` tags directly into the `text` field to control pacing.
-       - **Speaker Change / Narration Transition:** Insert `<break time="1200ms"/>` at the start of the new speaker's text.
-       - **Panel Transition:** Insert `<break time="800ms"/>` when moving to a new visual panel mid-segment.
-       - **Dramatic Pause:** Insert `<break time="400ms"/>` for emphasis or suspense (e.g., before a punchline).
+    3. **Natural Speech Style (MANDATORY):** 
+       - Write like a real person thinking and reacting in real-time.
+       - Use natural hesitation and fillers where appropriate: "umm", "hmm", "uh", "oh...", "huh".
+       - Use punctuation to control pacing: "," for short pauses, "..." for hesitation.
+       - SHORT sentences. Informal phrasing.
+       - **NO SSML TAGS.** Do not use `<break>` tags. Use text-based pacing ("...") instead.
 
     JSON Schema Requirement:
     {{
       "script_segments": [
         {{
           "type": "narration",
-          "text": "The villagers gaze up at the castle <break time='1000ms'/> terrified by the shadow looming over them."
+          "text": "The villagers gaze up at the castle... uh, they look completely terrified by that shadow."
         }},
         {{
           "type": "dialogue",
           "speaker": "The Hero",
-          "text": "<break time='1200ms'/> Are you ready to face him? <break time='500ms'/> I know I am not."
+          "text": "...Are you ready to face him? Hah, I know I'm not."
         }}
       ]
     }}
@@ -100,7 +103,7 @@ def generate_script_for_page(image_path, custom_prompt, page_num):
     for attempt in range(MAX_RETRIES + 1):
         try:
             img = Image.open(image_path)
-            logging.info(f"Sending Page {page_num} to Gemini (Attempt {attempt+1})...")
+            logging.debug(f"Sending Page {page_num} to Gemini (Attempt {attempt+1})...")
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
                 contents=[full_prompt, img],
@@ -120,7 +123,7 @@ def generate_script_for_page(image_path, custom_prompt, page_num):
                     wait_time = RETRY_DELAY * (2 ** attempt)  # Exponential Backoff: 10s, 20s, 40s
                     # Add jitter
                     wait_time += random.uniform(0, 5)
-                    logging.warning(f"Rate Limit hit for Page {page_num}. Retrying in {wait_time:.1f}s...")
+                    logging.debug(f"Rate Limit hit for Page {page_num}. Retrying in {wait_time:.1f}s...")
                     time.sleep(wait_time)
                 else:
                     logging.error(f"Failed to generate script for Page {page_num} after {MAX_RETRIES} retries: {e}")
@@ -129,58 +132,121 @@ def generate_script_for_page(image_path, custom_prompt, page_num):
                 logging.error(f"Error generating script for Page {page_num}: {e}")
                 return None
 
+def split_text_for_tts(text, max_chars=1500):
+    """Splits text into chunks respecting sentence boundaries to avoid 2000 char limit."""
+    if len(text) <= max_chars:
+        return [text]
+        
+    chunks = []
+    # Split by sentence endings (.?!) followed by space
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    
+    current_chunk = ""
+    for sentence in sentences:
+        # Check if adding this sentence exceeds limit
+        if len(current_chunk) + len(sentence) + 1 <= max_chars:
+            current_chunk += sentence + " "
+        else:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+            current_chunk = sentence + " "
+            
+            # Safety for extremely long sentences (rare but possible)
+            if len(current_chunk) > max_chars:
+                chunks.append(current_chunk[:max_chars])
+                current_chunk = current_chunk[max_chars:]
+
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+        
+    return chunks
+
 def generate_audio_for_segment(text, output_filename, voice_model):
-    """Generates audio for a single segment using Deepgram."""
+    """Generates audio for a single segment using Deepgram, with chunking support."""
     api_key = os.getenv("DEEPGRAM_API_KEY")
     if not api_key:
         raise ValueError("DEEPGRAM_API_KEY not found.")
 
     # Map short IDs to full Deepgram model tags
-    # CONFIRMATION: Python logic is now correctly receiving and mapping the new, valid, lowercase model identifiers.
     voice_map = {
         "asteria": "aura-asteria-en",
         "orion": "aura-orion-en",
         "luna": "aura-luna-en",
-        "hyperion": "aura-orion-en" # FALLBACK: Hyperion doesn't exist in Aura yet, fallback to Orion
+        "hyperion": "aura-orion-en"
     }
     
-    # Use mapped value if exists, otherwise use the input (fallback)
     model_tag = voice_map.get(voice_model, voice_model)
-
     MAX_RETRIES = 3
     RETRY_DELAY = 5
 
-    for attempt in range(MAX_RETRIES + 1):
-        try:
-            deepgram = DeepgramClient(api_key=api_key)
-            os.makedirs(os.path.dirname(output_filename), exist_ok=True)
+    # Split text if too long
+    text_chunks = split_text_for_tts(text)
+    temp_files = []
+    combined_audio = AudioSegment.empty()
+
+    success_all = True
+
+    try:
+        deepgram = DeepgramClient(api_key=api_key)
+        os.makedirs(os.path.dirname(output_filename), exist_ok=True)
+
+        for i, chunk in enumerate(text_chunks):
+            if not chunk.strip():
+                continue
             
-            # Wrap text in <speak> tag for SSML processing
-            ssml_text = f"<speak>{text}</speak>"
+            chunk_file = f"{output_filename}_part{i}.mp3"
+            chunk_success = False
+
+            for attempt in range(MAX_RETRIES + 1):
+                try:
+                    # Wrap text in <speak> tag for SSML processing
+                    ssml_text = f"<speak>{chunk}</speak>"
+                    
+                    response = deepgram.speak.v1.audio.generate(
+                        text=ssml_text,
+                        model=model_tag
+                    )
+                    
+                    with open(chunk_file, "wb") as f:
+                        for byte_chunk in response:
+                            if byte_chunk:
+                                f.write(byte_chunk)
+                    
+                    chunk_audio = AudioSegment.from_file(chunk_file)
+                    combined_audio += chunk_audio
+                    temp_files.append(chunk_file)
+                    chunk_success = True
+                    break # Success, move to next chunk
+                    
+                except Exception as e:
+                    if attempt < MAX_RETRIES:
+                        wait_time = RETRY_DELAY * (2 ** attempt) + random.uniform(0, 2)
+                        logging.debug(f"Chunk {i} failed (Attempt {attempt+1}). Retrying in {wait_time:.1f}s... Error: {e}")
+                        time.sleep(wait_time)
+                    else:
+                        logging.error(f"Failed to generate audio chunk {i} after retries: {e}")
             
-            response = deepgram.speak.v1.audio.generate(
-                text=ssml_text,
-                model=model_tag
-            )
-            
-            with open(output_filename, "wb") as f:
-                for chunk in response:
-                    if chunk:
-                        f.write(chunk)
-            
-            audio = AudioSegment.from_file(output_filename)
-            return len(audio) / 1000.0
-            
-        except Exception as e:
-            # Retry on connection errors (WinError 10060) or rate limits
-            if attempt < MAX_RETRIES:
-                wait_time = RETRY_DELAY * (2 ** attempt)
-                wait_time += random.uniform(0, 2)
-                logging.warning(f"Audio generation failed (Attempt {attempt+1}). Retrying in {wait_time:.1f}s... Error: {e}")
-                time.sleep(wait_time)
-            else:
-                logging.error(f"Failed to generate audio after {MAX_RETRIES} retries: {e}")
-                return None
+            if not chunk_success:
+                success_all = False
+                break
+        
+        if success_all:
+            combined_audio.export(output_filename, format="mp3")
+            return len(combined_audio) / 1000.0
+        else:
+            return None
+
+    except Exception as e:
+        logging.error(f"Audio generation wrapper failed: {e}")
+        return None
+    finally:
+        # Cleanup temp chunks
+        for f in temp_files:
+            if os.path.exists(f):
+                try:
+                    os.remove(f)
+                except:
+                    pass
 
 def process_page_audio(page_data, page_num, audio_dir, voice_model):
     """Processes all audio segments for a single page."""
@@ -247,7 +313,7 @@ def create_video(segments, output_filename):
     ]
     
     try:
-        logging.info(f"Running FFmpeg...")
+        logging.debug(f"Running FFmpeg...")
         # Capture output=True captures stdout/stderr, but if it fails, we need to log e.stderr
         subprocess.run(cmd, check=True, capture_output=True)
         logging.info(f"Video created: {output_filename}")
